@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Logic Controller Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f1f5f9; }
+        .glass-panel { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.5); }
+        .status-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .card-shadow { box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05); }
+        .input-focus { transition: all 0.2s; border: 2px solid #e2e8f0; }
+        .input-focus:focus { border-color: #6366f1; ring: none; outline: none; }
+        .badge { @apply px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider; }
+    </style>
+</head>
+<body class="text-slate-700 pb-12">
+
+    <nav class="sticky top-0 z-50 glass-panel border-b border-slate-200 px-6 py-4 mb-8">
+        <div class="max-w-5xl mx-auto flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-extrabold text-slate-900 tracking-tight">ESP32 <span class="text-indigo-600">CONFIG MANAGER</span></h1>
+                    <div id="wifiStatus" class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                        <span class="w-2 h-2 rounded-full bg-slate-300"></span> Connecting...
+                    </div>
+                </div>
+            </div>
+            <button onclick="saveConfig(event)" id="saveBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 rounded-2xl font-bold shadow-lg shadow-indigo-200 transition-all active:scale-95 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                Save Config
+            </button>
+        </div>
+    </nav>
+
+    <main class="max-w-5xl mx-auto px-4">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <div class="lg:col-span-4 space-y-6">
+                <section class="bg-white rounded-[2rem] p-6 card-shadow border border-slate-100">
+                    <div class="flex items-center gap-2 mb-6">
+                        <div class="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7a1 1 0 011.414-1.414L10 14.586l6.293-6.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                        </div>
+                        <h2 class="font-bold text-slate-800">Network Connection</h2>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <button onclick="scanWiFi()" class="w-full py-2.5 bg-slate-50 hover:bg-blue-50 text-blue-600 rounded-xl text-[11px] font-bold uppercase tracking-wider border border-dashed border-blue-200 transition-colors">Scan Available Networks</button>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">SSID</label>
+                            <select id="wifiSsid" class="w-full input-focus rounded-xl p-3 bg-slate-50 text-slate-700 mt-1"></select>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 uppercase ml-2">Password</label>
+                            <input type="password" id="wifiPass" class="w-full input-focus rounded-xl p-3 bg-slate-50 mt-1" placeholder="••••••••">
+                        </div>
+                    </div>
+                </section>
+
+                <section class="bg-white rounded-[2rem] p-6 card-shadow border border-slate-100">
+                    <div class="flex items-center gap-2 mb-6">
+                        <div class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" /></svg>
+                        </div>
+                        <h2 class="font-bold text-slate-800">Webhook / API</h2>
+                    </div>
+                    <input type="text" id="apiUrl" placeholder="https://api.endpoint.com" class="w-full input-focus rounded-xl p-3 bg-slate-50">
+                    <button onclick="disconnectWiFi()" class="w-full mt-6 text-red-400 text-[10px] font-bold hover:text-red-600 transition-colors uppercase tracking-widest">Factory Reset WiFi</button>
+                </section>
+            </div>
+
+            <div class="lg:col-span-8 space-y-6">
+                <section class="bg-white rounded-[2rem] p-8 card-shadow border border-slate-100">
+                    <div class="flex justify-between items-center mb-8">
+                        <div class="flex items-center gap-2">
+                            <div class="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd" /></svg>
+                            </div>
+                            <h2 class="font-bold text-lg text-slate-800">Pins Setup</h2>
+                        </div>
+                        <button onclick="addPin()" class="flex items-center gap-2 px-4 py-2 bg-purple-50 text-purple-600 rounded-xl font-bold text-sm hover:bg-purple-100 transition-all">+ Add Pin</button>
+                    </div>
+                    <div id="pinContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+                </section>
+
+                <section class="bg-slate-900 rounded-[2rem] p-8 card-shadow text-white relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-12 opacity-10 pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-32 w-32" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+                    </div>
+                    <div class="flex justify-between items-center mb-8 relative z-10">
+                        <div class="flex items-center gap-2">
+                            <div class="p-2 bg-white/10 text-indigo-300 rounded-lg">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" /></svg>
+                            </div>
+                            <h2 class="font-bold text-lg">Logic Rules</h2>
+                        </div>
+                        <button onclick="addRule()" class="px-4 py-2 bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 rounded-xl font-bold text-sm hover:bg-indigo-500/40 transition-all">New Rule</button>
+                    </div>
+                    <div id="ruleContainer" class="space-y-4 relative z-10"></div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- Same Logic as Original ---
+        let config = { wifi: {ssid:"", pass:""}, apiUrl: "", pins: [], rules: [] };
+        let availablePins = { safe: [], inputOnly: [] };
+
+        async function loadInitialData() {
+            try {
+                const pinRes = await fetch('/api/available-pins');
+                availablePins = await pinRes.json();
+                const res = await fetch('/api/config');
+                const data = await res.json();
+                if(data.pins) {
+                    config = data;
+                    renderPins();
+                    renderRules();
+                    document.getElementById('apiUrl').value = config.apiUrl || "";
+                    document.getElementById('wifiPass').value = config.wifi.pass || "";
+                }
+                checkStatus();
+            } catch(e) { renderPins(); renderRules(); }
+        }
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const status = await res.json();
+                const div = document.getElementById('wifiStatus');
+                if(status.wifi.connected) {
+                    div.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 status-pulse"></span> Connected: ${status.wifi.ssid}`;
+                    div.className = "flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-600";
+                } else {
+                    div.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-orange-400 status-pulse"></span> AP MODE: ESP32_CONFIG`;
+                    div.className = "flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-orange-500";
+                }
+            } catch(e) {}
+        }
+
+        function addPin() {
+            config.pins.push({ id: Date.now(), pin: 2, mode: "input", active: "high" });
+            renderPins(); renderRules();
+        }
+
+       function renderPins() {
+            const container = document.getElementById('pinContainer');
+            if (config.pins.length === 0) {
+                container.innerHTML = '<div class="col-span-full text-center py-8 text-slate-400 border-2 border-dashed border-slate-100 rounded-2xl italic">No pins configured</div>';
+                return;
+            }
+
+            let html = "";
+            config.pins.forEach((p, i) => {
+                const isInputOnly = availablePins.inputOnly.includes(p.pin);
+                
+                // 1. สร้าง HTML สำหรับกลุ่ม Safe Pins
+                let safeOptionsHtml = "";
+                availablePins.safe.forEach(n => {
+                    safeOptionsHtml += `<option value="${n}" ${p.pin == n ? 'selected' : ''}>GPIO ${n}</option>`;
+                });
+
+                // 2. สร้าง HTML สำหรับกลุ่ม Input Only
+                let inputOnlyOptionsHtml = "";
+                availablePins.inputOnly.forEach(n => {
+                    inputOnlyOptionsHtml += `<option value="${n}" ${p.pin == n ? 'selected' : ''}>GPIO ${n} (Input Only)</option>`;
+                });
+
+                // 3. ประกอบร่าง Card
+                html += `
+                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 group hover:border-purple-200 transition-all">
+                    <div class="flex justify-between items-start mb-4">
+                         <div class="flex-1">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-tight">Hardware Pin</p>
+                            <select onchange="updatePinSelection(${i}, this.value)" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-sm font-bold text-slate-700 outline-none cursor-pointer focus:ring-2 focus:ring-purple-400">
+                                <optgroup label="General I/O (Safe)">
+                                    ${safeOptionsHtml}
+                                </optgroup>
+                                <optgroup label="Input Only">
+                                    ${inputOnlyOptionsHtml}
+                                </optgroup>
+                            </select>
+                        </div>
+                        <button onclick="config.pins.splice(${i},1); renderPins(); renderRules();" class="text-slate-300 hover:text-red-500 transition-colors ml-2 mt-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Mode</p>
+                            <select onchange="config.pins[${i}].mode=this.value; renderPins(); renderRules();" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-bold ${p.mode==='input'?'text-blue-600':'text-purple-600'}" ${isInputOnly?'disabled':''}>
+                                <option value="input" ${p.mode==='input'?'selected':''}>INPUT</option>
+                                <option value="output" ${p.mode==='output'?'selected':''}>OUTPUT</option>
+                            </select>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase mb-1">Active At</p>
+                            <div class="flex bg-white border border-slate-200 p-1 rounded-lg">
+                                <button onclick="config.pins[${i}].active='high'; renderPins();" class="flex-1 py-1 text-[10px] font-bold rounded ${p.active==='high' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400'}">HIGH</button>
+                                <button onclick="config.pins[${i}].active='low'; renderPins();" class="flex-1 py-1 text-[10px] font-bold rounded ${p.active==='low' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400'}">LOW</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function updatePinSelection(i, val) {
+            config.pins[i].pin = parseInt(val);
+            if(availablePins.inputOnly.includes(config.pins[i].pin)) config.pins[i].mode = 'input';
+            renderPins(); renderRules();
+        }
+
+        function addRule() {
+            config.rules.push({ id: Date.now(), inputs: [], outputs: [] });
+            renderRules();
+        }
+
+        function renderRules() {
+            const container = document.getElementById('ruleContainer');
+            const inputPins = config.pins.filter(p => p.mode === 'input').map(p => p.pin);
+            const outputPins = config.pins.filter(p => p.mode === 'output').map(p => p.pin);
+            
+            if (config.rules.length === 0) { 
+                container.innerHTML = '<div class="text-center py-12 border-2 border-dashed border-white/10 rounded-[2rem] text-white/20 font-medium italic">No logic rules defined yet</div>'; 
+                return; 
+            }
+
+            container.innerHTML = config.rules.map((r, rIdx) => `
+                <div class="bg-white/5 border border-white/10 p-6 rounded-[1.5rem] transition-all hover:bg-white/[0.08]">
+                    <div class="flex justify-between items-center mb-6">
+                        <span class="badge bg-indigo-500/20 text-indigo-300">Rule #${rIdx+1}</span>
+                        <button onclick="config.rules.splice(${rIdx},1); renderRules();" class="text-white/20 hover:text-red-400 transition-colors">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-[1fr,auto,1fr] items-center gap-6">
+                        <div class="space-y-3">
+                            <p class="text-center text-[9px] font-black text-white/30 uppercase tracking-widest">When Inputs Trigger</p>
+                            <div class="flex flex-wrap gap-2 justify-center">
+                                ${inputPins.map(p => {
+                                    const checked = r.inputs.includes(p.toString());
+                                    return `<button onclick="toggleRulePin(${rIdx}, 'inputs', '${p}')" class="px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-all ${checked ? 'bg-indigo-500 border-indigo-400 text-white' : 'bg-transparent border-white/10 text-white/40 hover:border-white/30'}">GPIO ${p}</button>`;
+                                }).join('') || '<span class="text-xs text-white/20">No Inputs</span>'}
+                            </div>
+                        </div>
+
+                        <div class="flex justify-center">
+                            <div class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/20">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <p class="text-center text-[9px] font-black text-white/30 uppercase tracking-widest">Execute Outputs</p>
+                            <div class="flex flex-wrap gap-2 justify-center">
+                                ${outputPins.map(p => {
+                                    const checked = r.outputs.includes(p.toString());
+                                    return `<button onclick="toggleRulePin(${rIdx}, 'outputs', '${p}')" class="px-3 py-1.5 rounded-xl text-[11px] font-bold border transition-all ${checked ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-transparent border-white/10 text-white/40 hover:border-white/30'}">GPIO ${p}</button>`;
+                                }).join('') || '<span class="text-xs text-white/20">No Outputs</span>'}
+                            </div>
+                        </div>
+                    </div>
+                </div>`).join('');
+        }
+
+        function toggleRulePin(ruleIdx, type, pin) {
+            const list = config.rules[ruleIdx][type];
+            const index = list.indexOf(pin.toString());
+            if (index > -1) list.splice(index, 1);
+            else list.push(pin.toString());
+            renderRules(); 
+        }
+
+        async function saveConfig(e) {
+            const btn = document.getElementById('saveBtn');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = `<svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Saving...`;
+            btn.disabled = true;
+
+            config.wifi.ssid = document.getElementById('wifiSsid').value || config.wifi.ssid;
+            config.wifi.pass = document.getElementById('wifiPass').value;
+            config.apiUrl = document.getElementById('apiUrl').value;
+
+            try {
+                const res = await fetch('/api/save', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(config) 
+                });
+                const result = await res.json();
+                if(result.status === "restart") {
+                    alert("Settings saved. Device is rebooting to apply new WiFi...");
+                    location.reload();
+                } else {
+                    btn.innerHTML = "Success ✨";
+                    btn.classList.replace('bg-indigo-600', 'bg-emerald-500');
+                    setTimeout(() => { 
+                        btn.innerHTML = originalHtml; 
+                        btn.classList.replace('bg-emerald-500', 'bg-indigo-600');
+                        btn.disabled = false; 
+                    }, 2000);
+                }
+            } catch(e) { 
+                alert("Error saving config"); 
+                btn.innerHTML = originalHtml;
+                btn.disabled = false; 
+            }
+        }
+
+        async function scanWiFi() {
+            const s = document.getElementById('wifiSsid');
+            s.innerHTML = '<option>Scanning...</option>';
+            try {
+                const res = await fetch('/api/scan');
+                const data = await res.json();
+                s.innerHTML = data.map(n => `<option value="${n.ssid}" ${config.wifi.ssid==n.ssid?'selected':''}>${n.ssid}</option>`).join('');
+            } catch(e) { s.innerHTML = '<option>Scan Failed</option>'; }
+        }
+
+        async function disconnectWiFi() {
+            if(confirm("This will clear WiFi credentials and restart the device. Continue?")) { 
+                await fetch('/api/disconnect', {method:'POST'}); 
+                location.reload(); 
+            }
+        }
+
+        window.onload = loadInitialData;
+        setInterval(checkStatus, 5000);
+    </script>
+</body>
+</html>
