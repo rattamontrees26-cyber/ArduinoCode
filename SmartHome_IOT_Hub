@@ -1,0 +1,206 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <PubSubClient.h>
+#include <WiFiClientSecure.h>
+#include <Preferences.h> 
+#include <ArduinoJson.h>
+
+// --- ตั้งค่าขา Relay (เหมือนเดิม) ---
+#define RELAY_AI_COUNT 10
+int relayAI_pins[RELAY_AI_COUNT] = {4, 5, 12, 13, 14, 15, 16, 17, 18, 19};
+bool relayAI_active[RELAY_AI_COUNT] = {false};
+unsigned long relayAI_start[RELAY_AI_COUNT] = {0};
+unsigned long relayAI_duration[RELAY_AI_COUNT] = {0};
+
+String motherSN, storedSSID, storedPass, customTopic;
+int nextNodeID = 1;
+Preferences prefs;
+
+// MQTT Settings
+char mqtt_server[] = "86d44431ea224155b65c9d6f1b9aa7ca.s1.eu.hivemq.cloud";
+char mqtt_user[] = "Dzmorfin";
+char mqtt_pass[] = "Radazrnakub13!";
+
+WiFiClientSecure espClient;
+PubSubClient client(espClient);
+WebServer server(80);
+
+String getMotherSN() {
+    uint64_t chipid = ESP.getEfuseMac();
+    char sn[20];
+    sprintf(sn, "HUB-%04X%08X", (uint16_t)(chipid >> 32), (uint32_t)chipid);
+    return String(sn);
+}
+
+// ------------------------- Logic Functions (เหมือนเดิม) -------------------------
+void registerSlave(String slaveUID) {
+    prefs.begin("slaves", false);
+    int id = prefs.getInt(slaveUID.c_str(), 0);
+    if (id == 0) {
+        id = nextNodeID;
+        prefs.putInt(slaveUID.c_str(), id);
+        nextNodeID++;
+        prefs.putInt("nextID", nextNodeID);
+    }
+    prefs.end();
+
+    JsonDocument reply;
+    reply["id"] = id;
+    reply["uid"] = slaveUID;
+    char buffer[128];
+    serializeJson(reply, buffer);
+    client.publish(("discovery/reply/" + slaveUID).c_str(), buffer);
+    Serial.println(">>> Registered Slave: " + slaveUID + " ID: " + String(id));
+}
+
+void controlRelay(char relayChar, int cmd) {
+    int idx = relayChar - 'A';
+    if (idx >= 0 && idx < RELAY_AI_COUNT) {
+        if (cmd == 0) {
+            digitalWrite(relayAI_pins[idx], HIGH);
+            relayAI_active[idx] = false;
+        } else {
+            relayAI_duration[idx] = (cmd * 30UL) * 60000UL;
+            relayAI_start[idx] = millis();
+            relayAI_active[idx] = true;
+            digitalWrite(relayAI_pins[idx], LOW);
+        }
+    }
+}
+
+// ------------------------- MQTT Callback (เหมือนเดิม) -------------------------
+void callback(char* topic, byte* payload, unsigned int length) {
+    String message = "";
+    for (int i = 0; i < length; i++) message += (char)payload[i];
+    String strTopic = String(topic);
+    Serial.println("Incoming [" + strTopic + "]: " + message);
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, payload, length);
+    if (!error) {
+        if (strTopic == motherSN + "/discovery") {
+            const char* slaveUID = doc["uid"];
+            if (slaveUID) registerSlave(String(slaveUID));
+        } else if (strTopic == customTopic) {
+            const char* r = doc["relay"];
+            if (r) controlRelay(toupper(r[0]), doc["cmd"] | 0);
+        }
+    } else {
+        if (strTopic == motherSN + "/discovery") registerSlave(message);
+        else if (strTopic == customTopic && message.length() >= 2) {
+            controlRelay(toupper(message[0]), message[1] - '0');
+        }
+    }
+}
+
+// ------------------------- Web Server (เหมือนเดิม) -------------------------
+void handleRoot() {
+    String h = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
+    h += "<style>body{font-family:sans-serif; background:#f4f4f9; padding:20px;} .card{background:white; padding:20px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1); max-width:400px; margin:auto;} ";
+    h += "input{width:100%; padding:10px; margin:8px 0; border:1px solid #ddd; border-radius:5px;} ";
+    h += ".btn-save{background:#4CAF50; color:white; border:none; padding:12px; width:100%; border-radius:5px; cursor:pointer;} ";
+    h += ".btn-clear{background:#f44336; color:white; border:none; padding:10px; width:100%; border-radius:5px; cursor:pointer; margin-top:15px;}</style></head><body>";
+    h += "<div class='card'><h2>Mother Hub Config</h2>";
+    h += "<p>SN: <b>" + motherSN + "</b><br>Next ID: <b>" + String(nextNodeID) + "</b></p><hr>";
+    h += "<form action='/save' method='POST'>";
+    h += "WiFi SSID:<input name='s' value='"+storedSSID+"'>";
+    h += "WiFi Pass:<input name='p' type='password'>";
+    h += "MQTT Topic:<input name='t' value='"+customTopic+"'>";
+    h += "<input type='submit' value='Save & Reboot' class='btn-save'></form>";
+    h += "<hr><form action='/clearSlaves' method='POST' onsubmit=\"return confirm('ลบข้อมูลลูกทั้งหมด?')\">";
+    h += "<button type='submit' class='btn-clear'>Clear All Slaves</button></form></div></body></html>";
+    server.send(200, "text/html", h);
+}
+
+void handleSave() {
+    prefs.begin("settings", false);
+    prefs.putString("ssid", server.arg("s"));
+    prefs.putString("pass", server.arg("p"));
+    prefs.putString("topic", server.arg("t"));
+    prefs.end();
+    server.send(200, "text/html", "Saved! Rebooting...");
+    delay(2000); ESP.restart();
+}
+
+void handleClearSlaves() {
+    prefs.begin("slaves", false); prefs.clear(); prefs.putInt("nextID", 1); prefs.end();
+    nextNodeID = 1; server.send(200, "text/html", "Cleared! <a href='/'>Back</a>");
+}
+
+// ------------------------- Setup & Loop -------------------------
+void setup() {
+    Serial.begin(115200);
+    motherSN = getMotherSN();
+    prefs.begin("slaves", true); nextNodeID = prefs.getInt("nextID", 1); prefs.end();
+    prefs.begin("settings", true);
+    storedSSID = prefs.getString("ssid", "");
+    storedPass = prefs.getString("pass", "");
+    customTopic = prefs.getString("topic", "myhub/default");
+    prefs.end();
+
+    for (int i = 0; i < RELAY_AI_COUNT; i++) {
+        pinMode(relayAI_pins[i], OUTPUT); digitalWrite(relayAI_pins[i], HIGH);
+    }
+
+    WiFi.mode(WIFI_AP_STA);
+    if (storedSSID != "") {
+        WiFi.begin(storedSSID.c_str(), storedPass.c_str());
+        int r = 0; while(WiFi.status() != WL_CONNECTED && r < 15) { delay(1000); r++; Serial.print(".");}
+    }
+    if (WiFi.status() != WL_CONNECTED) WiFi.softAP("SERVER_HUB_CONFIG", "");
+
+    server.on("/", handleRoot);
+    server.on("/save", handleSave);
+    server.on("/clearSlaves", HTTP_POST, handleClearSlaves);
+    server.begin();
+
+    espClient.setInsecure();
+    client.setServer(mqtt_server, 8883);
+    client.setCallback(callback);
+}
+
+void loop() {
+    server.handleClient();
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!client.connected()) reconnect();
+        client.loop();
+    }
+    unsigned long now = millis();
+    for (int i = 0; i < RELAY_AI_COUNT; i++) {
+        if (relayAI_active[i] && (now - relayAI_start[i] >= relayAI_duration[i])) {
+            digitalWrite(relayAI_pins[i], HIGH); relayAI_active[i] = false;
+        }
+    }
+}
+
+// --- ฟังก์ชัน Reconnect ที่ปรับปรุงให้ส่งรายละเอียด WiFi/IP เป็น JSON ---
+void reconnect() {
+    static unsigned long lastRetry = 0;
+    if (millis() - lastRetry > 5000) {
+        lastRetry = millis();
+        String statusTopic = motherSN + "/status";
+        
+        // กำหนด LWT (Last Will) เป็น JSON กรณีออฟไลน์
+        String offlineMsg = "{\"status\":\"Offline\"}";
+
+        if (client.connect(motherSN.c_str(), mqtt_user, mqtt_pass, statusTopic.c_str(), 1, true, offlineMsg.c_str())) {
+            
+            // สร้าง JSON บอกข้อมูล WiFi และ IP
+            JsonDocument statusDoc;
+            statusDoc["status"] = "Online";
+            statusDoc["ssid"] = WiFi.SSID(); // ชื่อ WiFi
+            statusDoc["ip"] = WiFi.localIP().toString(); // หมายเลข IP
+            statusDoc["sn"] = motherSN;
+
+            char buffer[256];
+            serializeJson(statusDoc, buffer);
+
+            // ส่งสถานะแบบ Retain = true เพื่อให้ค้างใน Broker
+            client.publish(statusTopic.c_str(), buffer, true); 
+            
+            client.subscribe((motherSN + "/discovery").c_str());
+            if (customTopic != "") client.subscribe(customTopic.c_str());
+            Serial.println("MQTT Connected & Info Sent: " + String(buffer));
+        }
+    }
+}
