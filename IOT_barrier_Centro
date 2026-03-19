@@ -8,11 +8,11 @@
 const int relay_pin1 = 22;
 const int relay_pin2 = 23;
 
-char mqtt_server[] = "192.168.1.200";
+char mqtt_server[] = "4e5971a5a2124e6caa96ebe8b4e1e232.s1.eu.hivemq.cloud";
 int mqtt_port = 8883;
-char mqtt_user[] = "elid";
-char mqtt_pass[] = "12345";
-char mqtt_topic_checkserver[] = "checkserverklasssilom";
+char mqtt_user[] = "Bugbank";
+char mqtt_pass[] = "Bugbank@26";
+char mqtt_topic_checkserver[] = "checkserverCentro";
 
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
@@ -55,7 +55,7 @@ void setup_wifi() {
         Serial.println("\nFailed to connect to WiFi.");
         WiFi.mode(WIFI_AP);
         WiFi.softAPConfig(IPAddress(192,168,4,1), IPAddress(192,168,4,1), IPAddress(255,255,255,0));
-        WiFi.softAP("IOT_klasssilomSetup", "");
+        WiFi.softAP("IOT_DemoSetup", "");
         Serial.println("Started AP Mode at 192.168.4.1");
     }
 }
@@ -259,7 +259,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     String response = "";
 
     if (strcmp(topic, mqtt_topic_checkserver) == 0) {
-        String clientId = "klasssilom"; 
+        String clientId = "Centro"; 
         if (message == "-Netstart") {
             check_active = true;
             response = "Network start " + clientId;
@@ -386,6 +386,6 @@ void loop() {
 
     if (check_active && now - last_check_time >= check_interval) {
         last_check_time = now;
-        client.publish(mqtt_topic_checkserver, ("Test Network " + String("klasssilom")).c_str());
+        client.publish(mqtt_topic_checkserver, ("Test Network " + String("Centro")).c_str());
     }
 }
