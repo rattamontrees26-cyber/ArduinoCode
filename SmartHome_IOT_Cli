@@ -1,0 +1,297 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <PubSubClient.h>
+#include <WiFiClientSecure.h>
+#include <EEPROM.h>
+#include <ArduinoJson.h>
+
+// --- ตั้งค่าขา Pin แบบ 4 ช่อง ---
+#define NUM_CHANNELS 4
+int buttonPins[NUM_CHANNELS] = {13, 14, 27, 33};
+int relayPins[NUM_CHANNELS]  = {25, 26, 32, 22};
+
+// --- ตัวแปรสำหรับ Debounce และสถานะ (Array) ---
+int lastButtonStates[NUM_CHANNELS] = {HIGH, HIGH, HIGH, HIGH};
+int stableButtonStates[NUM_CHANNELS] = {HIGH, HIGH, HIGH, HIGH};
+unsigned long lastDebounceTimes[NUM_CHANNELS] = {0, 0, 0, 0};
+int currentOutputStates[NUM_CHANNELS] = {HIGH, HIGH, HIGH, HIGH}; // HIGH = OFF (Active Low)
+
+#define debounceDelay 50
+#define EEPROM_SIZE 512
+#define SSID_ADDR 0
+#define PASS_ADDR 33
+#define SN_ADDR 97
+#define ID_ADDR 130
+
+String myUID, storedSSID, storedPass, targetMotherSN;
+int assignedID = 0;
+bool isMotherOnline = false;
+
+// --- MQTT Settings ---
+char mqtt_server[] = "86d44431ea224155b65c9d6f1b9aa7ca.s1.eu.hivemq.cloud";
+char mqtt_user[] = "Dzmorfin";
+char mqtt_pass[] = "Radazrnakub13!";
+
+WiFiClientSecure espClient;
+PubSubClient client(espClient);
+WebServer server(80);
+
+// ------------------------- EEPROM Helpers -------------------------
+void saveStringToEEPROM(int addr, String data) {
+    EEPROM.write(addr, data.length());
+    for (int i = 0; i < data.length(); i++) {
+        EEPROM.write(addr + 1 + i, data[i]);
+    }
+    EEPROM.commit();
+}
+
+String loadStringFromEEPROM(int addr) {
+    int len = EEPROM.read(addr);
+    if (len > 100 || len < 0) return ""; 
+    char data[len + 1];
+    for (int i = 0; i < len; i++) {
+        data[i] = (char)EEPROM.read(addr + 1 + i);
+    }
+    data[len] = '\0';
+    return String(data);
+}
+
+// ------------------------- JSON Feedback -------------------------
+void sendJsonStatus(String type, String status, int pin = -1, int state = -1) {
+    if (assignedID > 0 && assignedID != 255) {
+        JsonDocument doc;
+        doc["node_id"] = assignedID;
+        doc["uid"] = myUID;
+        doc["ip"] = WiFi.localIP().toString();
+        doc["type"] = type;
+        doc["status"] = status;
+        if (pin != -1) doc["pin"] = pin;
+        if (state != -1) {
+            doc["state"] = (state == 1) ? "ON" : "OFF";
+        }
+
+        char buffer[256];
+        serializeJson(doc, buffer);
+        String statusTopic = targetMotherSN + "/node" + String(assignedID) + "/status";
+        client.publish(statusTopic.c_str(), buffer);
+        Serial.println(">>> JSON Sent: " + String(buffer));
+    }
+}
+
+// ------------------------- Check Buttons Logic -------------------------
+void checkButtons() {
+    for (int i = 0; i < NUM_CHANNELS; i++) {
+        int reading = digitalRead(buttonPins[i]);
+        if (reading != lastButtonStates[i]) {
+            lastDebounceTimes[i] = millis();
+        }
+
+        if ((millis() - lastDebounceTimes[i]) > debounceDelay) {
+            if (reading != stableButtonStates[i]) {
+                stableButtonStates[i] = reading;
+                if (stableButtonStates[i] == LOW) { // มีการกดปุ่มลงจริง
+                    currentOutputStates[i] = !currentOutputStates[i];
+                    digitalWrite(relayPins[i], currentOutputStates[i]);
+                    
+                    int reportVal = (currentOutputStates[i] == LOW) ? 1 : 0;
+                    sendJsonStatus("manual_control", "success", relayPins[i], reportVal);
+                    Serial.printf("Button %d (Pin %d) is %s\n", i+1, relayPins[i], (reportVal==1?"ON":"OFF"));
+                }
+            }
+        }
+        lastButtonStates[i] = reading;
+    }
+}
+
+// ------------------------- MQTT Callback -------------------------
+void callback(char* topic, byte* payload, unsigned int length) {
+    String strTopic = String(topic);
+    
+    // 1. ตรวจสอบสถานะตัวแม่
+    if (strTopic == targetMotherSN + "/status") {
+        JsonDocument doc;
+        if (!deserializeJson(doc, payload, length)) {
+            String s = doc["status"] | "";
+            isMotherOnline = (s == "Online");
+        } else {
+            String message = "";
+            for (int i = 0; i < length; i++) message += (char)payload[i];
+            isMotherOnline = (message == "Online");
+        }
+        return; 
+    }
+
+    // 2. รับ ID จากแม่
+    if (strTopic == "discovery/reply/" + myUID) {
+        JsonDocument doc;
+        if (!deserializeJson(doc, payload, length)) {
+            int newID = doc["id"];
+            if (newID > 0) {
+                assignedID = newID;
+                EEPROM.write(ID_ADDR, assignedID);
+                EEPROM.commit();
+                sendJsonStatus("registration", "success");
+                delay(1000); ESP.restart();
+            }
+        }
+        return;
+    }
+
+    // 3. รับคำสั่งคุมขา (Remote)
+    if (assignedID > 0 && assignedID != 255) {
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, payload, length);
+        int pin = -1, state = -1;
+
+        if (!error) {
+            pin = doc["pin"];
+            if (doc["state"].is<const char*>()) {
+                String s = doc["state"].as<String>(); s.toUpperCase();
+                state = (s == "ON") ? 1 : 0;
+            } else { state = doc["state"] | 0; }
+        } else {
+            String message = "";
+            for (int i = 0; i < length; i++) message += (char)payload[i];
+            int colonPos = message.indexOf(':');
+            if (colonPos > 0) {
+                pin = message.substring(0, colonPos).toInt();
+                state = message.substring(colonPos + 1).toInt();
+            }
+        }
+
+        if (pin != -1) {
+            for (int i = 0; i < NUM_CHANNELS; i++) {
+                if (relayPins[i] == pin) {
+                    currentOutputStates[i] = (state == 1) ? LOW : HIGH;
+                    pinMode(pin, OUTPUT);
+                    digitalWrite(pin, currentOutputStates[i]);
+                    sendJsonStatus("remote_control", "success", pin, state);
+                    break;
+                }
+            }
+        }
+    }
+}
+
+// ------------------------- Web Server Handlers -------------------------
+void handleRoot() {
+    String h = "<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
+    h += "<style>body{font-family:sans-serif; background:#eef2f3; padding:20px;} .card{background:white; padding:20px; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.1); max-width:400px; margin:auto;} ";
+    h += "input{width:100%; padding:12px; margin:8px 0; border:1px solid #ddd; border-radius:5px; box-sizing:border-box;} ";
+    h += ".btn-save{background:#4CAF50; color:white; border:none; padding:12px; width:100%; border-radius:5px; cursor:pointer; font-size:16px;} ";
+    h += ".btn-restart{background:#2196F3; color:white; border:none; padding:12px; width:100%; border-radius:5px; cursor:pointer; font-size:16px; margin-top:10px;}</style></head><body>";
+    
+    h += "<div class='card'><h2>Slave 4-CH Setup</h2>";
+    h += "<p>UID: <b>" + myUID + "</b><br>ID: <b>" + String(assignedID) + "</b><br>IP: <b>" + WiFi.localIP().toString() + "</b></p><hr>";
+    
+    h += "<form action='/s' method='POST'>";
+    h += "WiFi SSID:<input name='s' value='"+storedSSID+"'>";
+    h += "WiFi Pass:<input name='p' type='password' placeholder='Password'>";
+    h += "Mother SN:<input name='sn' value='"+targetMotherSN+"' placeholder='HUB-XXXX'>";
+    h += "<input type='submit' value='Save & Reboot' class='btn-save'></form>";
+
+    h += "<form action='/restart' method='POST' onsubmit=\"return confirm('ยืนยันการ Restart?')\">";
+    h += "<button type='submit' class='btn-restart'>Restart Slave Device</button></form></div></body></html>";
+    
+    server.send(200, "text/html", h);
+}
+
+void handleSave() {
+    saveStringToEEPROM(SSID_ADDR, server.arg("s"));
+    saveStringToEEPROM(PASS_ADDR, server.arg("p"));
+    saveStringToEEPROM(SN_ADDR, server.arg("sn"));
+    EEPROM.write(ID_ADDR, 0); EEPROM.commit();
+    server.send(200, "text/html", "Saved! Rebooting...");
+    delay(2000); ESP.restart();
+}
+
+void handleRestart() {
+    server.send(200, "text/html", "Restarting...");
+    delay(2000); ESP.restart();
+}
+
+// ------------------------- Setup & Loop -------------------------
+void setup() {
+    Serial.begin(115200);
+    EEPROM.begin(EEPROM_SIZE);
+
+    // วนลูปตั้งค่า Pin ทั้ง 4 ชุด
+    for (int i = 0; i < NUM_CHANNELS; i++) {
+        pinMode(buttonPins[i], INPUT_PULLUP);
+        pinMode(relayPins[i], OUTPUT);
+        digitalWrite(relayPins[i], HIGH); // ดับ (Active Low)
+    }
+
+    WiFi.mode(WIFI_STA);
+    uint64_t chipid = ESP.getEfuseMac();
+    char uidChar[13];
+    sprintf(uidChar, "%04X%08X", (uint16_t)(chipid >> 32), (uint32_t)chipid);
+    myUID = String(uidChar);
+
+    storedSSID = loadStringFromEEPROM(SSID_ADDR);
+    storedPass = loadStringFromEEPROM(PASS_ADDR);
+    targetMotherSN = loadStringFromEEPROM(SN_ADDR);
+    assignedID = EEPROM.read(ID_ADDR);
+
+    if (storedSSID != "") {
+        WiFi.begin(storedSSID.c_str(), storedPass.c_str());
+        int r = 0; while (WiFi.status() != WL_CONNECTED && r < 20) { delay(1000); r++; Serial.print(".");}
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        WiFi.mode(WIFI_AP);
+        WiFi.softAP(("SLAVE_4CH_" + myUID.substring(myUID.length()-4)).c_str());
+        Serial.println("\nAP Mode Started");
+    }
+
+    server.on("/", handleRoot);
+    server.on("/s", handleSave);
+    server.on("/restart", HTTP_POST, handleRestart);
+    server.begin();
+
+    espClient.setInsecure();
+    client.setServer(mqtt_server, 8883);
+    client.setCallback(callback);
+}
+
+void loop() {
+    server.handleClient();
+    if (WiFi.status() == WL_CONNECTED) {
+        if (!client.connected()) reconnect();
+        client.loop();
+
+        // Discovery System
+        if (assignedID == 0 || assignedID == 255) {
+            static unsigned long lastDiscovery = 0;
+            if (millis() - lastDiscovery > 10000) {
+                lastDiscovery = millis();
+                if (targetMotherSN != "") {
+                    JsonDocument doc; doc["uid"] = myUID;
+                    char buffer[128]; serializeJson(doc, buffer);
+                    client.publish((targetMotherSN + "/discovery").c_str(), buffer);
+                    client.subscribe(("discovery/reply/" + myUID).c_str());
+                    Serial.println("Sent Discovery to Mother: " + targetMotherSN);
+                }
+            }
+        }
+    }
+    checkButtons(); // เช็คปุ่มทั้ง 4 ปุ่มตลอดเวลา
+}
+
+void reconnect() {
+    while (!client.connected() && WiFi.status() == WL_CONNECTED) {
+        if (client.connect(myUID.c_str(), mqtt_user, mqtt_pass)) {
+            Serial.println("Connected to HiveMQ");
+            if (targetMotherSN != "") {
+                client.subscribe((targetMotherSN + "/status").c_str());
+                if (assignedID > 0 && assignedID != 255) {
+                    client.subscribe((targetMotherSN + "/node" + String(assignedID) + "/cmd").c_str());
+                    sendJsonStatus("system", "online"); 
+                }
+            }
+        } else {
+            Serial.print("Failed, rc="); Serial.print(client.state());
+            delay(5000);
+        }
+    }
+}
