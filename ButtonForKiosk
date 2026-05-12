@@ -1,0 +1,275 @@
+
+String inputDoor = "";         // a String to hold incoming data
+boolean stringComplete = false;  // whether the string is complete
+
+const int PushButton2 = 2; //Button
+const int PushButton3 = 3; //Button
+const int PushButton4 = 4; //Button
+const int PushButton5 = 5; //Button
+const int PushButton6 = 6; //Button
+const int PushButton7 = 7; //Button
+
+const int OutputDevice8 = 8; //Relay
+const int OutputDevice9 = 9; //Relay
+const int OutputDevice10 = 10;//Relay
+const int OutputDevice11 = 11;//Relay
+const int OutputDevice12 = 12;//Relay
+const int OutputDevice13 = 13;//Relay
+int ButtonState2 = -1;
+int LastButtonState2 = -1;     // previous state of the button
+int ButtonState3 = -1;
+int LastButtonState3 = -1;     // previous state of the button
+int ButtonState4 = -1;
+int LastButtonState4 = -1;     // previous state of the button
+int ButtonState5 = -1;
+int LastButtonState5 = -1;     // previous state of the button
+int ButtonState6 = -1;
+int LastButtonState6 = -1;     // previous state of the button
+int ButtonState7 = -1;
+int LastButtonState7 = -1;     // previous state of the button
+
+void setup() {
+  // initialize serial:
+  Serial.begin(9600);
+  // reserve 200 bytes for the inputDoor:
+  inputDoor.reserve(200);
+  pinMode(PushButton2, INPUT_PULLUP);
+  pinMode(PushButton3, INPUT_PULLUP);
+  pinMode(PushButton4, INPUT_PULLUP);
+  pinMode(PushButton5, INPUT_PULLUP);
+  pinMode(PushButton6, INPUT_PULLUP);
+  pinMode(PushButton7, INPUT_PULLUP);
+  
+  pinMode(OutputDevice8, OUTPUT);   
+  pinMode(OutputDevice9, OUTPUT);   
+  pinMode(OutputDevice10, OUTPUT);   
+  pinMode(OutputDevice11, OUTPUT);   
+  pinMode(OutputDevice12, OUTPUT); 
+  pinMode(OutputDevice13, OUTPUT); 
+  
+  digitalWrite(OutputDevice8, HIGH); 
+  digitalWrite(OutputDevice9, HIGH); 
+  digitalWrite(OutputDevice10, HIGH); 
+  digitalWrite(OutputDevice11, HIGH); 
+  digitalWrite(OutputDevice12, HIGH); 
+  digitalWrite(OutputDevice13, HIGH); 
+}
+
+void loop() {
+  // print the string when a newline arrives:
+  CheckReceivePushButton();
+ //CheckReceiveAndHighOutPutDevice();
+CheckReceiveAndLowOutPutDevice();
+}
+void CheckReceivePushButton()
+{
+  ButtonState2 = digitalRead(PushButton2);
+  if( ButtonState2 != LastButtonState2)
+  {
+    LastButtonState2 = ButtonState2;
+    if (ButtonState2 == LOW) 
+    {
+      Serial.println("1");
+    }
+  }
+  ButtonState3 = digitalRead(PushButton3);
+  if( ButtonState3 != LastButtonState3)
+  {
+    LastButtonState3 = ButtonState3;
+    if (ButtonState3 == LOW) 
+    {
+      Serial.println("1");
+    }
+  }
+  ButtonState4 = digitalRead(PushButton4);
+  if( ButtonState4 != LastButtonState4)
+  {
+    LastButtonState4 = ButtonState4;
+    if (ButtonState4 == LOW) 
+    {
+      Serial.println("1");
+    }
+  }
+  ButtonState5 = digitalRead(PushButton5);
+  if( ButtonState5 != LastButtonState5)
+  {
+    LastButtonState5 = ButtonState5;
+    if (ButtonState5 == LOW) 
+    {
+      Serial.println("1");
+    }
+  }  
+  ButtonState6 = digitalRead(PushButton6);
+  if( ButtonState6 != LastButtonState6)
+  {
+    LastButtonState6 = ButtonState6;
+    if (ButtonState6 == LOW) 
+    {
+      Serial.println("1");
+    }
+  }    
+  ButtonState7 = digitalRead(PushButton7);
+  if( ButtonState7 != LastButtonState7)
+  {
+    LastButtonState7 = ButtonState7;
+    if (ButtonState7 == LOW) 
+    {
+      Serial.println("1");
+    }
+  }  
+  delay(200);
+}
+
+void CheckReceiveAndHighOutPutDevice()
+{
+ if (stringComplete) 
+  {
+      inputDoor.replace("\n","");
+      Serial.println("Open Door "+inputDoor);
+      if(inputDoor  == "1")
+      {
+        Serial.println("Door 1 Opening...");
+        digitalWrite(OutputDevice8,HIGH);
+        delay(200);
+        digitalWrite(OutputDevice8,LOW);
+        Serial.println("Open Door 1 Success");
+      }
+      else if(inputDoor  == "2")
+      {
+        Serial.println("Door 2 Opening...");
+        digitalWrite(OutputDevice9,HIGH);
+        delay(200);
+        digitalWrite(OutputDevice9,LOW);
+        Serial.println("Open Door 2 Success");
+      }
+      else if(inputDoor  == "3")
+      {
+        Serial.println("Door 3 Opening...");
+        digitalWrite(OutputDevice10,HIGH);
+        delay(200);
+        digitalWrite(OutputDevice10,LOW);
+        Serial.println("Open Door 3 Success");
+      }
+      else if(inputDoor  == "4")
+      {
+        Serial.println("Door 4 Opening...");
+        digitalWrite(OutputDevice11,HIGH);
+        delay(200);
+        digitalWrite(OutputDevice11,LOW);
+        Serial.println("Open Door 4 Success");
+      }      
+      else if(inputDoor  == "5")
+      {
+        Serial.println("Door 5 Opening...");
+        digitalWrite(OutputDevice12,HIGH);
+        delay(200);
+        digitalWrite(OutputDevice12,LOW);
+        Serial.println("Open Door 5 Success");
+      }      
+      else if(inputDoor  == "6")
+      {
+        Serial.println("Door 6 Opening...");
+        digitalWrite(OutputDevice13,HIGH);
+        delay(200);
+        digitalWrite(OutputDevice13,LOW);
+        Serial.println("Open Door 6 Success");
+      }     
+      else 
+      /*
+      if( inputDoor != "0" && inputDoor != "1" 
+      //&& inputDoor != "2" && inputDoor != "3" 
+      //&& inputDoor != "4" && inputDoor != "5"
+      //&& inputDoor != "6"
+      ) */
+      {
+        Serial.println("Invalid open door. Please try again.");        
+      }
+    inputDoor = "";
+    stringComplete = false;
+  }  
+}
+void CheckReceiveAndLowOutPutDevice()
+{
+ if (stringComplete) 
+  {
+      inputDoor.replace("\n","");
+      Serial.println("Open Door "+inputDoor);
+      if(inputDoor  == "1")
+      {
+        Serial.println("Door 1 Opening...");
+        digitalWrite(OutputDevice8,LOW);
+        delay(200);
+        digitalWrite(OutputDevice8,HIGH);
+        Serial.println("Open Door 1 Success");
+      }
+      else if(inputDoor  == "2")
+      {
+        Serial.println("Door 2 Opening...");
+        digitalWrite(OutputDevice9,LOW);
+        delay(200);
+        digitalWrite(OutputDevice9,HIGH);
+        Serial.println("Open Door 2 Success");
+      }
+      else if(inputDoor  == "3")
+      {
+        Serial.println("Door 3 Opening...");
+        digitalWrite(OutputDevice10,LOW);
+        delay(200);
+        digitalWrite(OutputDevice10,HIGH);
+        Serial.println("Open Door 3 Success");
+      }
+      else if(inputDoor  == "4")
+      {
+        Serial.println("Door 4 Opening...");
+        digitalWrite(OutputDevice11,LOW);
+        delay(200);
+        digitalWrite(OutputDevice11,HIGH);
+        Serial.println("Open Door 4 Success");
+      }      
+      else if(inputDoor  == "5")
+      {
+        Serial.println("Door 5 Opening...");
+        digitalWrite(OutputDevice12,LOW);
+        delay(200);
+        digitalWrite(OutputDevice12,HIGH);
+        Serial.println("Open Door 5 Success");
+      }      
+      else if(inputDoor  == "6")
+      {
+        Serial.println("Door 6 Opening...");
+        digitalWrite(OutputDevice13,LOW);
+        delay(200);
+        digitalWrite(OutputDevice13,HIGH);
+        Serial.println("Open Door 6 Success");
+      }     
+      else 
+      /*
+      if( inputDoor != "0" && inputDoor != "1" 
+      //&& inputDoor != "2" && inputDoor != "3" 
+      //&& inputDoor != "4" && inputDoor != "5"
+      //&& inputDoor != "6"
+      ) */
+      {
+        Serial.println("Invalid open door. Please try again.");        
+      }
+    inputDoor = "";
+    stringComplete = false;
+  }  
+}
+/*
+  SerialEvent occurs whenever a new data comes in the hardware serial RX. This
+  routine is run between each time loop() runs, so using delay inside loop can
+  delay response. Multiple bytes of data may be available.
+*/
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read();
+    inputDoor += inChar;
+    // if the incoming character is a newline, set a flag so the main loop can
+    // do something about it:
+    if (inChar == '\n') {
+      stringComplete = true;
+    }
+  }
+}
